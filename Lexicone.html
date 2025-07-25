@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexicone - Daily Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #4c1d95 100%);
+        }
+        .card {
+            background-color: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+        }
+        .history-item {
+            animation: pop-in 0.4s cubic-bezier(0.250, 0.460, 0.450, 0.940) both;
+        }
+        .score-reveal {
+            font-weight: 900;
+            font-size: 3rem; 
+            line-height: 1;
+            animation: score-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes score-pop {
+            0% { transform: scale(0.7); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .win-anim {
+            animation: pop-in 0.5s cubic-bezier(0.250, 0.460, 0.450, 0.940) 0.1s both;
+        }
+        .modal-backdrop {
+            animation: fade-in-backdrop 0.3s ease both;
+        }
+        .modal-content {
+             animation: pop-in 0.3s ease 0.1s both;
+        }
+        @keyframes fade-in-backdrop {
+            from { background-color: rgba(0,0,0,0); }
+            to { background-color: rgba(17, 24, 39, 0.6); } /* bg-gray-900/60 */
+        }
+        .keyboard-key {
+            transition: background-color 0.1s ease, transform 0.1s ease;
+        }
+        .keyboard-key:active {
+            transform: scale(0.95);
+            background-color: #d1d5db; /* gray-300 */
+        }
+        .dist-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        #keyboard-container {
+            max-height: 300px;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, margin-top 0.4s ease-out, opacity 0.3s ease-out 0.1s;
+        }
+        #keyboard-container.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0 !important;
+            pointer-events: none;
+            transition: max-height 0.4s ease-in, margin-top 0.4s ease-in, opacity 0.2s ease-in;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
+
+    <div class="w-full max-w-md mx-auto">
+        <header class="text-center mb-4 px-4 flex justify-between items-center">
+             <button id="mute-button" class="text-white hover:text-indigo-200 p-2 rounded-full transition z-10">
+                <!-- SVG icon for mute/unmute will be injected here -->
+            </button>
+            <div class="text-center">
+                <h1 class="text-4xl font-bold text-white tracking-wider">Lexicone</h1>
+                <p id="daily-date" class="text-indigo-200 text-sm"></p>
+            </div>
+            <button id="stats-button" class="text-white hover:text-indigo-200 p-2 rounded-full transition z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10M18 20V4M6 20V16"/></svg>
+            </button>
+        </header>
+
+        <main class="card relative rounded-2xl shadow-2xl p-4 sm:p-6 text-center transition-all duration-500">
+            <!-- Keyboard Toggle Button -->
+            <button id="toggle-keyboard-btn" class="absolute bottom-2 right-2 text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition z-20">
+                <!-- Icon will be injected by JS -->
+            </button>
+
+            <div id="game-area">
+                <div class="flex space-x-2 mb-4">
+                    <input type="text" id="guess-input" placeholder="Enter your guess" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    <button id="guess-button" class="bg-indigo-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition shadow-md">Guess</button>
+                </div>
+
+                <div id="feedback" class="text-indigo-600 min-h-[60px] mb-4 flex flex-col items-center justify-center"></div>
+                
+                <p class="text-gray-600 font-medium">Tries: <span id="tries-count" class="font-bold">0</span></p>
+
+                <div id="history-container" class="mt-4 text-left">
+                    <h2 class="font-bold text-gray-700 mb-2 border-b-2 border-gray-200 pb-1">Guess History</h2>
+                    <div id="history-list" class="max-h-32 sm:max-h-48 overflow-y-auto divide-y divide-gray-200 pr-2">
+                    </div>
+                </div>
+            </div>
+
+            <div id="win-screen" class="hidden">
+                <h2 class="text-3xl font-bold text-green-600 mb-3 win-anim">You got it!</h2>
+                <p class="text-xl text-gray-800 mb-2 win-anim">The word was: <span id="secret-word-display" class="font-bold"></span></p>
+                <p class="text-gray-600 mb-4 win-anim">You guessed it in <span id="final-tries" class="font-bold"></span> tries.</p>
+                
+                <div class="mt-6 border-t pt-4 win-anim">
+                    <h3 class="text-gray-800 font-bold">NEXT LEXICONE IN</h3>
+                    <p id="countdown-timer" class="text-2xl font-mono font-bold text-indigo-600"></p>
+                </div>
+
+                <button id="share-button" class="w-full mt-4 bg-green-500 text-white font-semibold px-6 py-3 rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition shadow-md win-anim">Share Results</button>
+            </div>
+            
+            <div id="loading-indicator" class="hidden items-center justify-center mt-4">
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-gray-600">Analyzing...</span>
+            </div>
+             <!-- On-screen Keyboard -->
+            <div id="keyboard-container" class="mt-4 space-y-1"></div>
+        </main>
+    </div>
+    
+    <!-- Modals -->
+    <div id="notification-modal" class="modal-backdrop hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl text-center">
+            <p id="notification-text" class="text-lg font-semibold text-gray-800"></p>
+        </div>
+    </div>
+
+    <div id="stats-modal" class="modal-backdrop hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl text-left w-full max-w-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">Statistics</h2>
+                <button id="close-stats-button" class="text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="grid grid-cols-4 gap-4 text-center mb-6">
+                <div>
+                    <div id="stats-played" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500">Played</div>
+                </div>
+                <div>
+                    <div id="stats-win-pct" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500">Win %</div>
+                </div>
+                <div>
+                    <div id="stats-current-streak" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500">Current Streak</div>
+                </div>
+                <div>
+                    <div id="stats-max-streak" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500">Max Streak</div>
+                </div>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-2 text-center">Guess Distribution</h3>
+            <div id="stats-distribution" class="space-y-1">
+                <!-- Distribution bars will be injected here -->
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- DOM Elements ---
+        const elements = {
+            guessInput: document.getElementById('guess-input'),
+            guessButton: document.getElementById('guess-button'),
+            feedback: document.getElementById('feedback'),
+            triesCount: document.getElementById('tries-count'),
+            historyList: document.getElementById('history-list'),
+            gameArea: document.getElementById('game-area'),
+            winScreen: document.getElementById('win-screen'),
+            secretWordDisplay: document.getElementById('secret-word-display'),
+            finalTries: document.getElementById('final-tries'),
+            shareButton: document.getElementById('share-button'),
+            loadingIndicator: document.getElementById('loading-indicator'),
+            dailyDate: document.getElementById('daily-date'),
+            countdownTimer: document.getElementById('countdown-timer'),
+            muteButton: document.getElementById('mute-button'),
+            statsButton: document.getElementById('stats-button'),
+            keyboardContainer: document.getElementById('keyboard-container'),
+            toggleKeyboardBtn: document.getElementById('toggle-keyboard-btn'),
+            notificationModal: document.getElementById('notification-modal'),
+            notificationText: document.getElementById('notification-text'),
+            statsModal: document.getElementById('stats-modal'),
+            closeStatsButton: document.getElementById('close-stats-button'),
+            statsPlayed: document.getElementById('stats-played'),
+            statsWinPct: document.getElementById('stats-win-pct'),
+            statsCurrentStreak: document.getElementById('stats-current-streak'),
+            statsMaxStreak: document.getElementById('stats-max-streak'),
+            statsDistribution: document.getElementById('stats-distribution'),
+        };
+
+        // --- Icon SVGs ---
+        const speakerIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+        const muteIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+        const keyboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01M14 8h.01M18 8h.01M6 8h.01M12 12h.01M16 12h.01M12 16h.01M10 16h.01M14 16h.01M18 16h.01M6 16h.01M3 4a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M8 21h8"/></svg>`;
+        const chevronDownIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+        // --- Game State ---
+        let secretWord = '';
+        let isSoundEnabled = false;
+        let isMuted = false;
+        let gameState = {};
+        let stats = {};
+        let countdownInterval;
+
+        // --- Sound Synthesis (Tone.js) ---
+        let guessSynth, winSynth, errorSynth, revealSynth;
+
+        function setupSounds() {
+             if(isSoundEnabled) {
+                guessSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 } }).toDestination();
+                winSynth = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sine' }, envelope: { attack: 0.05, decay: 0.5, sustain: 0.3, release: 0.5 } }).toDestination();
+                errorSynth = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination();
+                revealSynth = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.15, sustain: 0 } }).toDestination();
+             }
+        }
+
+        const wordList = [
+            // Level 1: Everyday Objects
+            "spatula", "colander", "microwave", "whisk", "ladle", "grater", "blender", "toaster", "kettle", "skillet", 
+            "blackboard", "stapler", "protractor", "compass", "binder", "textbook", "projector", "easel", "globe", "microscope",
+            "hammer", "wrench", "screwdriver", "pliers", "saw", "drill", "level", "chisel", "sandpaper", "nail", 
+            "paperclip", "highlighter", "folder", "pushpin", "shredder", "printer", "scanner", "keyboard", "mouse", "monitor",
+            
+            // Level 2: Food & Drink
+            "strawberry", "pineapple", "pomegranate", "mango", "raspberry", "blueberry", "avocado", "coconut", "grapefruit", "apricot", 
+            "broccoli", "eggplant", "artichoke", "asparagus", "cauliflower", "zucchini", "beetroot", "radish", "turnip", "kale", 
+            "croissant", "tiramisu", "macaroon", "bagel", "muffin", "cupcake", "brownie", "cheesecake", "sourdough", "brioche", 
+            "sushi", "paella", "curry", "pho", "kimchi", "ramen", "tacos", "risotto", "goulash", "schnitzel", 
+            
+            // Level 3: Animals
+            "goat", "chicken", "pig", "cow", "sheep", "horse", "donkey", "duck", "goose", "rooster", 
+            "octopus", "urchin", "anglerfish", "narwhal", "jellyfish", "starfish", "seahorse", "lobster", "crab", "dolphin", 
+            "dragonfly", "scorpion", "katydid", "mantis", "tarantula", "grasshopper", "cockroach", "hornet", "cicada", "centipede", 
+            "mammoth", "dodo", "megalodon", "saber-tooth", "glyptodon", "moa", "thylacine", "archaeopteryx", "velociraptor", "stegosaurus", 
+            
+            // Level 4: The Human Body
+            "elbow", "eyebrow", "knuckle", "nostril", "eyelash", "shin", "calf", "thigh", "forearm", "chin", 
+            "lung", "liver", "spleen", "kidney", "pancreas", "stomach", "intestine", "heart", "brain", "bladder", 
+            "femur", "clavicle", "sternum", "patella", "tibia", "fibula", "humerus", "radius", "ulna", "cranium", 
+            "circulatory", "nervous", "endocrine", "respiratory", "skeletal", "muscular", "digestive", "immune", "integumentary", "lymphatic", 
+            
+            // Level 5: Places & Geography
+            "Brazil", "Egypt", "New Zealand", "Japan", "Kenya", "Argentina", "Iceland", "Vietnam", "Turkey", "Morocco", 
+            "Eiffel Tower", "Great Wall", "Machu Picchu", "Colosseum", "Pyramids", "Taj Mahal", "Stonehenge", "Angkor Wat", "Acropolis", "Kremlin", 
+            "Nile", "Pacific", "Superior", "Amazon", "Arctic", "Victoria", "Caspian", "Mediterranean", "Caribbean", "Ganges", 
+            "peninsula", "plateau", "archipelago", "isthmus", "canyon", "delta", "fjord", "savanna", "glacier", "volcano", 
+            
+            // Level 6: Clothing & Fashion
+            "hoodie", "trousers", "blouse", "skirt", "dress", "jacket", "sweater", "cardigan", "waistcoat", "overalls", 
+            "sandal", "loafer", "galoshes", "sneaker", "boot", "clog", "moccasin", "espadrille", "wedge", "stiletto", 
+            "bowtie", "cufflink", "brooch", "fedora", "beret", "scarf", "tie", "suspenders", "cummerbund", "locket", 
+            "corset", "toga", "doublet", "farthingale", "ruff", "crinoline", "spats", "tunic", "kirtle", "wimple", 
+            
+            // Level 7: Hobbies & Sports
+            "volleyball", "cricket", "lacrosse", "rugby", "basketball", "hockey", "baseball", "soccer", "polo", "handball", 
+            "origami", "pottery", "macrame", "calligraphy", "knitting", "embroidery", "quilting", "scrapbooking", "sculpting", "woodworking", 
+            "chess", "Catan", "poker", "Monopoly", "Scrabble", "Mahjong", "backgammon", "bridge", "dominoes", "checkers", 
+            "hiking", "kayaking", "spelunking", "bouldering", "rafting", "scuba", "orienteering", "sailing", "archery", "fishing", 
+            
+            // Level 8: Verbs (Action Words)
+            "climbing", "whispering", "juggling", "sprinting", "swimming", "dancing", "throwing", "catching", "kneeling", "stretching", 
+            "enunciate", "persuade", "heckle", "debate", "negotiate", "interrogate", "pontificate", "clarify", "articulate", "mumble", 
+            "composing", "sculpting", "choreographing", "illustrating", "painting", "designing", "weaving", "carving", "improvising", "arranging", 
+            "evolving", "eroding", "metamorphosing", "crystallizing", "fermenting", "oxidizing", "decaying", "germinating", "condensing", "evaporating",
+            
+            // Level 9: Occupations
+            "firefighter", "paramedic", "librarian", "teacher", "police", "mail carrier", "sanitation", "doctor", "nurse", "veterinarian",
+            "geologist", "data analyst", "astrophysicist", "botanist", "chemist", "ecologist", "marine biologist", "developer", "physicist", "engineer",
+            "curator", "illustrator", "foley artist", "animator", "novelist", "composer", "sculptor", "architect", "fashion designer", "conductor",
+            "sommelier", "actuary", "cartographer", "locksmith", "arborist", "brewmaster", "glazier", "luthier", "cooper", "farrier",
+            
+            // Level 10: Adjectives (Describing Words)
+            "charismatic", "meticulous", "gregarious", "empathetic", "stoic", "resilient", "vivacious", "cynical", "whimsical", "pragmatic", 
+            "abrasive", "viscous", "iridescent", "glossy", "matte", "coarse", "silky", "velvety", "porous", "brittle", 
+            "minuscule", "colossal", "gargantuan", "immense", "petite", "vast", "microscopic", "monumental", "compact", "sprawling", 
+            "wistful", "jubilant", "contemplative", "melancholic", "euphoric", "serene", "anxious", "ecstatic", "somber", "pensive", 
+            
+            // Level 11: Science & Technology
+            "osmosis", "symbiosis", "mitochondria", "photosynthesis", "enzyme", "nucleus", "chromosome", "cytoplasm", "vacuole", "ribosome", 
+            "catalyst", "polymer", "isotope", "covalent", "ionic", "molecule", "atom", "electron", "proton", "neutron", 
+            "quark", "supernova", "kinetic", "gravity", "inertia", "momentum", "velocity", "acceleration", "black hole", "nebula", 
+            "algorithm", "firewall", "cryptocurrency", "database", "server", "client", "bandwidth", "malware", "phishing", "cache", 
+            
+            // Level 12: Arts & Culture
+            "cello", "oboe", "marimba", "harpsichord", "bassoon", "clarinet", "saxophone", "trombone", "tuba", "timpani", 
+            "satire", "biography", "epic", "sonnet", "memoir", "thriller", "fantasy", "dystopian", "historical", "mystery", 
+            "Gothic", "Baroque", "Brutalism", "Art Deco", "Neoclassical", "Bauhaus", "Modernist", "Victorian", "Romanesque", "Byzantine", 
+            "Impressionism", "Cubism", "Surrealism", "Renaissance", "Expressionism", "Abstract", "Pop Art", "Fauvism", "Dadaism", "Pointillism", 
+            
+            // Level 13: Historical Events & Eras
+            "Mesopotamia", "Roman Empire", "Shang Dynasty", "Aztec", "Inca", "Ottoman", "Byzantine", "Persian", "Viking", "Egyptian", 
+            "Peloponnesian", "Napoleonic", "Cold War", "Crusades", "Punic Wars", "Hundred Years", "Thirty Years", "Revolution", "World War I", "World War II", 
+            "Renaissance", "Enlightenment", "Gilded Age", "Industrial", "Middle Ages", "Stone Age", "Bronze Age", "Iron Age", "Reformation", "Victorian Era", 
+            "Roaring Twenties", "Swinging Sixties", "Jazz Age", "Depression", "Counterculture", "Information Age", "Digital Age", "Atomic Age", "Progressive Era", "Prohibition", 
+            
+            // Level 14: Abstract Concepts
+            "capitalism", "anarchy", "patriotism", "democracy", "socialism", "communism", "feudalism", "monarchy", "oligarchy", "utopia", 
+            "temperance", "avarice", "magnanimity", "prudence", "fortitude", "justice", "charity", "gluttony", "envy", "sloth", 
+            "determinism", "nihilism", "solipsism", "existentialism", "stoicism", "hedonism", "utilitarianism", "empiricism", "rationalism", "idealism", 
+            "deja vu", "catharsis", "ennui", "nostalgia", "empathy", "apathy", "synchronicity", "serendipity", "schadenfreude", "sublime", 
+            
+            // Level 15: Mythology & Folklore
+            "Thor", "Anubis", "Quetzalcoatl", "Zeus", "Hera", "Poseidon", "Hades", "Ra", "Odin", "Loki", 
+            "gorgon", "kitsune", "kraken", "cyclops", "griffin", "dragon", "unicorn", "phoenix", "centaur", "hydra", 
+            "Mjolnir", "Golden Fleece", "Holy Grail", "Excalibur", "Pandora's Box", "Ark", "Spear", "Aegis", "Ambrosia", "Nectar", 
+            "Baba Yaga", "Paul Bunyan", "Golem", "Bigfoot", "Leprechaun", "Banshee", "Werewolf", "Vampire", "Zombie", "Siren", 
+            
+            // Level 16: Specialized Jargon
+            "diagnosis", "placebo", "synapse", "prognosis", "triage", "antigen", "biopsy", "scalpel", "stethoscope", "hemoglobin", 
+            "affidavit", "subpoena", "habeas corpus", "indictment", "litigation", "acquittal", "perjury", "precedent", "jurisprudence", "injunction", 
+            "synecdoche", "oxymoron", "allegory", "metaphor", "simile", "paradox", "irony", "hyperbole", "personification", "onomatopoeia", 
+            "caldera", "moraine", "stratigraphic", "tectonic", "magma", "lava", "sediment", "fossil", "erosion", "fault", 
+            
+            // Level 17: The Truly Obscure
+            "callipygian", "quixotic", "penultimate", "defenestration", "sesquipedalian", "obfuscate", "abscond", "pulchritudinous", "perfidious", "ephemeral", 
+            "sizzle", "murmur", "plop", "cacophony", "whoosh", "thud", "buzz", "hiss", "gurgle", "chortle",
+            "murder", "exaltation", "parliament", "ostentation", "unkindness", "convocation", "tiding", "murmuration", "knot", "gaggle",
+            "Tyrannosaurus", "Homo sapiens", "Canis lupus", "Felis catus", "Loxodonta", "Panthera", "Ursus arctos", "Giraffa", "Equus caballus", "Gallus gallus"
+        ];
+        
+        // --- Gemini API ---
+        async function getAiAnalysis(guess, target) {
+            const prompt = `Analyze the user's guess "${guess}" against the secret word "${target}". Respond with a JSON object with three keys: {"isAppropriate": boolean, "isValid": boolean, "score": number}. "isAppropriate" checks for vulgarity. "isValid" checks if it's a real English word. "score" is semantic similarity from 1-100, where attributes (like 'predator' for 'wolf') get high scores. Invalid/inappropriate words get score 0.`;
+            const responseText = await callGeminiAPI(prompt);
+            try {
+                const jsonMatch = responseText.match(/\{.*\}/s);
+                if (jsonMatch) {
+                    const jsonObj = JSON.parse(jsonMatch[0]);
+                     if (typeof jsonObj.isAppropriate === 'boolean' && typeof jsonObj.isValid === 'boolean' && typeof jsonObj.score === 'number') {
+                        jsonObj.score = Math.max(1, Math.min(99, Math.round(jsonObj.score)));
+                        return jsonObj;
+                    }
+                }
+            } catch (e) { console.error("Error parsing AI JSON:", e, "Raw:", responseText); }
+            return null;
+        }
+
+        async function callGeminiAPI(prompt) {
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }] };
+            try {
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                const result = await response.json();
+                if (result.candidates?.[0]?.content?.parts?.[0]) {
+                    return result.candidates[0].content.parts[0].text;
+                } else { throw new Error("Invalid API response structure."); }
+            } catch (error) { console.error(`API Call failed:`, error); return null; }
+        }
+        
+        // --- Game State & Data Management ---
+        function getTodaysDateString() { return new Date().toLocaleDateString('en-CA'); }
+
+        function getDailyWord() {
+            const today = new Date();
+            const dayOfYear = Math.floor((today - new Date(today.getFullYear(), 0, 0)) / 86400000);
+            return wordList[dayOfYear % wordList.length];
+        }
+
+        function loadData() {
+            // Load stats
+            const savedStats = JSON.parse(localStorage.getItem('semanticWordleStats'));
+            stats = savedStats || { played: 0, wins: 0, currentStreak: 0, maxStreak: 0, lastPlayDate: '', lastWinDate: '', distribution: {} };
+            
+            // Load game state
+            const savedState = JSON.parse(localStorage.getItem('semanticWordleState'));
+            const today = getTodaysDateString();
+
+            if (savedState && savedState.date === today) {
+                gameState = savedState;
+            } else {
+                gameState = { date: today, guesses: [], hasWon: false, isComplete: false };
+                // Check for streak continuation
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                if (stats.lastWinDate !== yesterday.toLocaleDateString('en-CA')) {
+                    stats.currentStreak = 0;
+                }
+            }
+            secretWord = getDailyWord();
+            saveStats();
+            saveGameState();
+        }
+
+        function saveGameState() { localStorage.setItem('semanticWordleState', JSON.stringify(gameState)); }
+        function saveStats() { localStorage.setItem('semanticWordleStats', JSON.stringify(stats)); }
+
+        function updateUIFromState() {
+            elements.historyList.innerHTML = '';
+            gameState.guesses.forEach(guess => addHistoryItem(guess.word, guess.score));
+            elements.triesCount.textContent = gameState.guesses.length;
+
+            if (gameState.isComplete) {
+                showWinScreen();
+            }
+        }
+        
+        async function handleGuess() {
+            if (!isSoundEnabled) { await Tone.start(); isSoundEnabled = true; setupSounds(); }
+            if (gameState.isComplete) return;
+
+            const userGuess = elements.guessInput.value.trim().toLowerCase();
+            
+            if (!userGuess) { showTemporaryFeedback("Please enter a word.", 'text-red-500'); if(isSoundEnabled && !isMuted) errorSynth.triggerAttackRelease("G2", "0.1"); return; }
+            if (gameState.guesses.some(g => g.word === userGuess)) { showTemporaryFeedback("Already guessed that!", 'text-amber-600'); if(isSoundEnabled && !isMuted) errorSynth.triggerAttackRelease("G2", "0.1"); elements.guessInput.value = ''; return; }
+            
+            setLoading(true);
+            if(isSoundEnabled && !isMuted) guessSynth.triggerAttackRelease("C4", "0.05");
+            if (stats.lastPlayDate !== gameState.date) {
+                stats.played++;
+                stats.lastPlayDate = gameState.date;
+            }
+
+            const analysis = await getAiAnalysis(userGuess, secretWord);
+            setLoading(false);
+            
+            if (!analysis) { showTemporaryFeedback("Analysis failed. Try again!", 'text-red-500'); if(isSoundEnabled && !isMuted) errorSynth.triggerAttackRelease("G2", "0.1"); return; }
+            if (!analysis.isAppropriate) { showTemporaryFeedback("Inappropriate word detected.", 'text-red-500'); if(isSoundEnabled && !isMuted) errorSynth.triggerAttackRelease("G2", "0.1"); return; }
+            if (!analysis.isValid) { showTemporaryFeedback(`"${elements.guessInput.value}" isn't a valid word.`, 'text-red-500'); if(isSoundEnabled && !isMuted) errorSynth.triggerAttackRelease("G2", "0.1"); return; }
+            
+            const isWin = userGuess.toLowerCase() === secretWord.toLowerCase();
+            const currentGuess = { word: userGuess, score: isWin ? 100 : analysis.score };
+            
+            gameState.guesses.push(currentGuess);
+            if (isWin) {
+                gameState.hasWon = true;
+                gameState.isComplete = true;
+                updateStatsOnWin();
+            }
+            
+            saveGameState();
+            saveStats();
+            
+            addHistoryItem(currentGuess.word, currentGuess.score);
+            showScore(currentGuess.score);
+            elements.triesCount.textContent = gameState.guesses.length;
+            
+            if (gameState.isComplete) { showWinScreen(); }
+            elements.guessInput.value = '';
+        }
+        
+        function updateStatsOnWin() {
+            stats.wins++;
+            stats.currentStreak++;
+            if (stats.currentStreak > stats.maxStreak) {
+                stats.maxStreak = stats.currentStreak;
+            }
+            stats.lastWinDate = gameState.date;
+            const tries = gameState.guesses.length;
+            stats.distribution[tries] = (stats.distribution[tries] || 0) + 1;
+        }
+
+        function showWinScreen() {
+            if(isSoundEnabled && !isMuted && !elements.winScreen.classList.contains('hidden')) return;
+            if(isSoundEnabled && !isMuted && gameState.hasWon) winSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "0.5");
+            
+            elements.gameArea.classList.add('hidden');
+            elements.keyboardContainer.classList.add('collapsed');
+            elements.toggleKeyboardBtn.classList.add('hidden');
+            elements.winScreen.classList.remove('hidden');
+            elements.secretWordDisplay.textContent = secretWord.charAt(0).toUpperCase() + secretWord.slice(1);
+            elements.finalTries.textContent = gameState.guesses.length;
+            startCountdown();
+        }
+        
+        function getScoreColor(score) {
+            if (score === 100) return 'bg-green-200/80 text-green-800';
+            if (score >= 90) return 'bg-red-200/80 text-red-800';
+            if (score >= 75) return 'bg-orange-200/80 text-orange-800';
+            if (score >= 50) return 'bg-yellow-200/80 text-yellow-800';
+            if (score >= 25) return 'bg-sky-200/80 text-sky-800';
+            return 'bg-blue-200/80 text-blue-800';
+        }
+
+        function addHistoryItem(guess, score) {
+            const item = document.createElement('div');
+            item.className = `history-item flex justify-between items-center py-1.5 px-3 rounded-md ${getScoreColor(score)}`;
+            const wordSpan = document.createElement('span');
+            wordSpan.className = 'font-semibold capitalize';
+            wordSpan.textContent = guess;
+            const scoreSpan = document.createElement('span');
+            scoreSpan.className = `font-bold text-sm`;
+            scoreSpan.textContent = `${score}`;
+            item.appendChild(wordSpan); item.appendChild(scoreSpan);
+            elements.historyList.prepend(item);
+        }
+        
+        function createKeyboard() {
+            const keys = [
+                ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+                ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+                ['enter', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'del']
+            ];
+            keys.forEach(row => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'flex justify-center space-x-1';
+                row.forEach(key => {
+                    const keyBtn = document.createElement('button');
+                    keyBtn.className = 'keyboard-key h-12 flex-1 rounded-md bg-gray-200 font-semibold text-gray-800 flex items-center justify-center';
+                    if (key.length > 1) {
+                         keyBtn.classList.add('px-2', 'sm:px-3', 'text-xs');
+                    }
+                    keyBtn.dataset.key = key;
+                    keyBtn.textContent = key.toUpperCase();
+                    rowDiv.appendChild(keyBtn);
+                });
+                elements.keyboardContainer.appendChild(rowDiv);
+            });
+        }
+        
+        function handleKeyboardClick(e) {
+            const key = e.target.closest('[data-key]');
+            if (!key) return;
+            const keyValue = key.dataset.key;
+            if (keyValue === 'del') {
+                elements.guessInput.value = elements.guessInput.value.slice(0, -1);
+            } else if (keyValue === 'enter') {
+                handleGuess();
+            } else {
+                elements.guessInput.value += keyValue;
+            }
+        }
+
+        function toggleKeyboard() {
+            const isCollapsed = elements.keyboardContainer.classList.toggle('collapsed');
+            elements.toggleKeyboardBtn.innerHTML = isCollapsed ? keyboardIcon : chevronDownIcon;
+        }
+        
+        function showScore(score) {
+            elements.feedback.innerHTML = '';
+            const scoreSpan = document.createElement('span');
+            scoreSpan.className = 'score-reveal';
+            scoreSpan.textContent = `${score}`;
+            elements.feedback.appendChild(scoreSpan);
+            if(isSoundEnabled && !isMuted) revealSynth.triggerAttackRelease("0.15");
+        }
+        
+        function showTemporaryFeedback(message, colorClass) {
+            const feedbackSpan = document.createElement('span');
+            feedbackSpan.textContent = message;
+            feedbackSpan.className = `font-medium ${colorClass}`;
+            elements.feedback.innerHTML = '';
+            elements.feedback.appendChild(feedbackSpan);
+        }
+
+        function setLoading(isLoading) {
+            elements.loadingIndicator.classList.toggle('hidden', !isLoading);
+            elements.loadingIndicator.classList.toggle('flex', isLoading);
+            elements.guessButton.disabled = isLoading;
+            elements.guessInput.disabled = isLoading;
+        }
+        
+        function startCountdown() {
+            if (countdownInterval) clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                const tomorrow = new Date(new Date().setHours(24, 0, 0, 0));
+                const diff = tomorrow - new Date();
+                const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+                const m = Math.floor(diff % 3600000 / 60000).toString().padStart(2, '0');
+                const s = Math.floor(diff % 60000 / 1000).toString().padStart(2, '0');
+                elements.countdownTimer.textContent = `${h}:${m}:${s}`;
+            }, 1000);
+        }
+
+        function generateShareText() {
+            const date = new Date(gameState.date);
+            const dateString = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+            let text = `Lexicone - ${dateString}\nGuessed in ${gameState.guesses.length} tries! 🎲\n\n`;
+            gameState.guesses.forEach((g) => {
+                if (g.score === 100) text += '🏆';
+                else if (g.score >= 90) text += '🟥';
+                else if (g.score >= 75) text += '🟧';
+                else if (g.score >= 50) text += '🟨';
+                else if (g.score >= 25) text += '🟦';
+                else text += '⬜️';
+            });
+            return text;
+        }
+
+        function showNotification(text) {
+            elements.notificationText.textContent = text;
+            elements.notificationModal.classList.remove('hidden');
+            setTimeout(() => { elements.notificationModal.classList.add('hidden'); }, 1500);
+        }
+
+        function updateMuteButton() { elements.muteButton.innerHTML = isMuted ? muteIcon : speakerIcon; }
+        function toggleMute() { isMuted = !isMuted; localStorage.setItem('semanticWordleMuted', isMuted); updateMuteButton(); }
+        
+        function showStatsModal() {
+            elements.statsPlayed.textContent = stats.played;
+            elements.statsWinPct.textContent = stats.played > 0 ? Math.round((stats.wins / stats.played) * 100) : 0;
+            elements.statsCurrentStreak.textContent = stats.currentStreak;
+            elements.statsMaxStreak.textContent = stats.maxStreak;
+
+            elements.statsDistribution.innerHTML = '';
+            const maxVal = Math.max(...Object.values(stats.distribution), 0);
+            for (let i = 1; i <= 10; i++) { // Show distribution for up to 10 tries
+                const count = stats.distribution[i] || 0;
+                const width = maxVal > 0 ? (count / maxVal) * 100 : 0;
+                const bar = document.createElement('div');
+                bar.className = 'flex items-center text-sm';
+                bar.innerHTML = `
+                    <div class="w-4 font-bold">${i}</div>
+                    <div class="flex-grow bg-gray-200 rounded-sm h-5 ml-2">
+                        <div class="dist-bar bg-indigo-500 h-5 rounded-sm text-white text-xs font-bold flex items-center justify-end pr-2" style="width: ${width}%">${count > 0 ? count : ''}</div>
+                    </div>
+                `;
+                elements.statsDistribution.appendChild(bar);
+            }
+            elements.statsModal.classList.remove('hidden');
+        }
+
+        // --- Event Listeners ---
+        elements.guessButton.addEventListener('click', handleGuess);
+        elements.guessInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') handleGuess(); });
+        elements.muteButton.addEventListener('click', toggleMute);
+        elements.toggleKeyboardBtn.addEventListener('click', toggleKeyboard);
+        elements.shareButton.addEventListener('click', () => {
+            navigator.clipboard.writeText(generateShareText()).then(() => {
+                showNotification('Results copied to clipboard!');
+            });
+        });
+        elements.statsButton.addEventListener('click', showStatsModal);
+        elements.closeStatsButton.addEventListener('click', () => elements.statsModal.classList.add('hidden'));
+        elements.keyboardContainer.addEventListener('click', handleKeyboardClick);
+
+        // --- Initial Game Start ---
+        window.onload = () => {
+            elements.dailyDate.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            isMuted = localStorage.getItem('semanticWordleMuted') === 'true';
+            updateMuteButton();
+            loadData();
+            updateUIFromState();
+            createKeyboard();
+            elements.keyboardContainer.classList.add('collapsed');
+            elements.toggleKeyboardBtn.innerHTML = keyboardIcon;
+        };
+    </script>
+</body>
+</html>
